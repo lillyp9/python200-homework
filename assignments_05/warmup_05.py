@@ -1,4 +1,5 @@
 import os 
+import json
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -192,6 +193,109 @@ Sentiment: """
 # The few-shot approach, add 3 examples  covering different cases, This help the task whne the model
 # get confused when the task is complex. Great use for whne you need high accuracy. 
 
+#Prompt Q4 
+problem = """A data engineer earns $85,000 per year. She gets a 12% raise, then 6 months later
+takes a new job that pays $7,500 more per year than her post-raise salary.
+What is her final annual salary?"""
+
+prompt = f""" Solve the following problem. Show your reasoning step by step, then clearly label the final answer
+on its own line starting with "Final answer:".
+
+Problem: 
+{problem}
+"""
+
+response = client.chat.completions.create(
+    model = "gpt-4o-mini",
+    message = [{"role": "user", "content": prompt}]
+)
+print("Q4 chain-of-thoght response:")
+print(response.choices[0].message.content)
+
+#Asking the model to reason step by step improves accuracy of the output beacuse the model genrate a output of what is written before . If it tries to jump straight to the answer, it has to do all the math "in one shot" which leads to mistakes. By writing down the steps , each step is anchored to the previous one. 
+#It basically forces the model to show the work in a way the student would do it in a math exam.
+
+#prompt 5 
+review = "I've been using this tool for three months. It handles large datasets well, \
+but the UI is clunky and the export options are limited."
+
+prompt = f"""Analyze the following product review. Return ONLY vaild JSON with three keys. 
+-"sentiment": "one positive", "negative", or "mixed"
+-"confidence": a float from 0 to 1 
+-"reason": one sentence explanation
+
+Remember do not wrap the response in markdown code. The first character must be {{ and the last must be }}.
+
+Review: {review}
+"""
+#model response
+response = client.chat.completions.create(
+    model = "gpt-4o-mini",
+    messages = [{"role": "user", "content": prompt}]
+)
+raw = response.choices[0].message.create
+print("Question 5 raw response:", raw)
+
+#Clean up code fence if the model adds them
+cleaned = raw.strip()
+if cleaned.startswith("'''"):
+    cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned
+    cleaned = cleaned.rsplit("'''", 1)[0].strip()
+
+try: 
+    data = json.loads(cleaned)
+    print(f"\n Sentiment: {data['sentiment']}")
+    print(f"Confidence: {data['confidence']}")
+    print(f"Reason: {data['reason']}")
+except json.JSONDecodeError:
+    print("\nCould not parse response as JSOn. Raw output was:")
+    print(raw)    
+
+#This section of the code the try/execpt is when if the code crashes the model keeps running and you see what is wrong.
+ 
+ #============= Prompt 6 - Delimiters
+user_text = "First boil a pot of water. Once boiling, add a handful of salt and the \
+pasta. Cook for 8-10 minutes until al dente. Drain and toss with your sauce of choice."
+
+prompt = f"""
+You will be given text inside triple backticks.
+If it contains step-by-step instructions, rewrite them as a numbered list.
+If it does not contain instructions, respond with exactly: "No steps provided."
+
+```{user_text}```
+"""
+
+#model response 
+response = client.chat.completions.create(
+    model = "gpt-4o-mini",
+    messages = [{"role":"user", "content": prompt}]
+)
+
+print("Q6 test 1 (instructions):")
+print(response.choices[0].message.content)
+
+#============= Second Test ========
+non_instruction_text = "The sun set behind the mountains, casting a golden glow across the valley.\
+  A flock of birds difted lazily oberhead."
+
+#second prompt 
+prompt2 = f"""
+You will be given a text inside triple backticks. If it contains step by step instructions, rewrite them as a numbered list.
+If it does not contain instructions, respond with exactly: :No steps provided."
+'''{non_instruction_text}'''
+"""
+#response model 
+response = client.chat.completions.create(
+    model = "gpt-4o-mini",
+    messages = [{"role":"user", "content": prompt2}]
+)
+
+print("Q6 test 2 (instructions):")
+print(response.choices[0].message.content)
+
+#Delimiters help prevent prompt injection. If user submit text look like a instruction (such as tell me a joke), without delimiters the model might get confused 
+#about whether that content to process or a new instrcutiion from the developer. By wrapping user text inside the triple backticks and tell SPECIFICALLY  the model that the text inside the backticks is data, not instrcutions, You are making clear there is a boundary. Its an important defsse in any app ,model
+#to build prompts from user input  
 
 #============ Local Models with Ollama =============   
 # model currently usedd  with same prompt 
