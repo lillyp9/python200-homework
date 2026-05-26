@@ -189,7 +189,7 @@ for pdf_file in Path(pdf_path).glob("*.pdf"):
         documents.append(Document(text=text, metadata={"file_name": pdf_file.name}))
         print(f"  Loaded {pdf_file.name}: {len(text)} chars")
     else:
-        print(f"  ⚠️  {pdf_file.name} had no extractable text")
+        print(f"{pdf_file.name} had no extractable text")
 
 #load doc 
 print(f"Loaded {len(documents)} documents.")
