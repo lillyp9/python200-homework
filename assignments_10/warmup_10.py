@@ -1,51 +1,73 @@
-#========LLM as Transform ========
+# ======== ML vs. LLM in Pipelines ========
 
-#=====Question 1 
-#Parse the string "Jan 5th, 2024" into an ISO date format like "2024-01-05".
-"""Code since its date parsing """
-#Classify a customer support ticket -- "my card was charged twice" -- into one of: billing, technical, or general.
-"""LLM since it requires thinking , reading comprehension which a regex can not do."""
-#Calculate the average of a list of numbers.
-"""Code since its calculting the average """
-#Extract the company name from a freeform job title like "Sr. Data Eng @ Acme Corp (contract)".
-"""LLM since the input is irregular and needs language understanding  """
-#Determine whether a product review is more than 100 words long.
-"""Code since is counting words """
+# ===== Question 1
+"""
+The ML classifier produces a binary prediction (good or skip) from numeric features. The LLM
+produces natural language text, the written recommendation. ML is built for fast consistent
+numeric classification, while the LLM is built to generate human readable language.
 
-#======= Question 2 
-#system = "Summarize this product review in a few sentences."
-
-#In a comment block, explain what problem this creates downstream in a pipeline, and rewrite the prompt so it produces output that is easy to parse and store reliably.
-#The problem is that saying to summarize the product review in few sentences which makes it unpredictable, can be various length and structure everytime which makes it harder to parse and store in the pipeline.
-"""Rewritten prompt:
-system = ("Summarize this product review in exactly one sentence."
-"Reply with valid JSON only , using this format i am giving you:
-'{"summary": "Your one sentence here}')
+If you swapped them, using the LLM for the binary prediction would be slower, cost more, and be
+less consistent, and could return something outside the two allowed labels. Using the ML model to
+write the recommendation would not work since a classifier only outputs a label, not sentences.
 """
 
-#===== Question 3 
+# ===== Question 2
+# Converting a date string like "2023-07-04" to day-of-week
+"""Code since its date parsing."""
+# Classifying a job posting as entry-level, mid-level, or senior from freeform text
+"""LLM since it requires reading comprehension which a regex can not do."""
+# Predicting customer churn given 15 numeric features and a labeled training dataset
+"""Trained ML model since that is what a classifier trained on labeled numeric data is for."""
+# Normalizing inconsistent city names to a canonical form
+"""LLM since the input is irregular and needs language understanding."""
+# Summing a column of revenue figures
+"""Code since its calculating."""
 
-#Your dataset has 50,000 records and you need to run a classification call for each one using gpt-4o-mini. In a comment block, answer:
+# ===== Question 3
+"""
+Incremental processing means only processing the new or changed records each run instead of
+redoing the whole dataset every time. It matters here because the pipeline calls the LLM per
+record and those calls cost money and time. You dont want to pay for the same records over and over again if they have not changed.
 
-    #If each call takes 1 second on average, how long would sequential processing take?
-""" It be 50,000 x 1 sec = 50,000 seconds which is equal to 13.9 hours."""
-    #What is one practical strategy to handle this more efficiently at scale, without changing models?
-"""Use OpenAi batch API to process requests at reduce cost or use concurrency to run multiple calls at once. """
+If the transform reprocessed all 365 records every time, the cost would multiply since you pay for
+365 LLM calls each run instead of just the new ones, the runtime would grow, and you risk
+overwriting or duplicating results that were already correct.
+"""
 
-#======== Azure OpenAI============
+# ======== Prompt  ========
 
-#======= Question 1 
-"""The two reason to use Azure OpenAI is becuase of :
-Data residency annd compliiance whohc the requets /info stays inside the Azure infranstructure then having it in the piblic OpenAI server.
-Anoher reasin woould be Unified billing/support which costs appear on the same Azure bill and support is avaible through Microsoft . """
+# ===== Question 1
+"""
+SYSTEM_PROMPT = (
+    "You are giving an outdoor running recommendation based on weather conditions."
+    "Reply with exactly two sentences. The first sentence states the prediction (good or skip). "
+    "The second sentence explains the reasoning based on the temperature and precipitation."
+)
 
-#======= Question 2 
-""" Three of the Azure specific client parameters is:
-Azure_endpoint: The URL of your organaization Azure OpenAI resource
-API_Version: the version of Azure OpenAI API you're calling 
-API_key: The Azure specific API key for your resources """
+For validation, instead of checking the output is one word in a fixed set, I would check that the
+response has two sentences and pull the prediction from the first sentence (check if it contains
+"good" or "skip"). The validation becomes about format and sentence structure instead of an exact one word match.
+"""
 
-#====== Question 3 
-#n a comment block, answer: when using AzureOpenAI, the model parameter in chat.completions.create() does not take a value like "gpt-4o-mini". What does it take instead, and where do you find the right value to use?
-""" Instead of gpt-40-mini , the model parameter takes the deployment name , a named depolyment created by your party. You will find it in Azuure AI Foundry under deployment section of Azure OpenAI
+# ===== Question 2
+import time
+
+def call_with_retry(client, messages, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            return client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+            )
+        except Exception:
+            if attempt < max_retries - 1:
+                time.sleep(2)
+            else:
+                return None
+
+# When you would use this in a production pipeline:
+"""
+You would use this to handle transitional failures like network,rate limits, or a momentary
+API outage, so one temporary error does not crash the whole run. Returning None on final failure
+lets the calling code handle the bad record or failure easier instead of stopping.
 """
